@@ -1,0 +1,226 @@
+Resources:
+  # ElastiCache for Redis (Serverless)
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for ElastiCache
+      SubnetIds:
+        - ${cf:${self:service}-${self:provider.stage}-vpc.PrivateSubnet1}
+        - ${cf:${self:service}-${self:provider.stage}-vpc.PrivateSubnet2}
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-cache-subnet-group
+
+  CacheServerless:
+    Type: AWS::ElastiCache::ServerlessCache
+    Properties:
+      ServerlessCacheName: ${self:service}-${self:provider.stage}-cache
+      Engine: redis
+      MajorEngineVersion: '7'
+      SecurityGroupIds:
+        - ${cf:${self:service}-${self:provider.stage}-vpc.CacheSecurityGroup}
+      SubnetIds:
+        - ${cf:${self:service}-${self:provider.stage}-vpc.PrivateSubnet1}
+        - ${cf:${self:service}-${self:provider.stage}-vpc.PrivateSubnet2}
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-cache
+
+  # SQS Queues for async processing
+  BookingProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:service}-${self:provider.stage}-booking-processing
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 1209600 # 14 days
+      ReceiveMessageWaitTimeSeconds: 20 # Long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt BookingProcessingDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-booking-processing
+
+  BookingProcessingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:service}-${self:provider.stage}-booking-processing-dlq
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-booking-processing-dlq
+
+  PaymentProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:service}-${self:provider.stage}-payment-processing
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 1209600
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PaymentProcessingDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-payment-processing
+
+  PaymentProcessingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:service}-${self:provider.stage}-payment-processing-dlq
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-payment-processing-dlq
+
+  # Additional DynamoDB Tables
+  RateLimitTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ${self:service}-${self:provider.stage}-rate-limits
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: window
+          AttributeType: N
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: window
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-rate-limits
+
+  SessionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ${self:service}-${self:provider.stage}-sessions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sessionId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sessionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-sessions
+
+  WaitingTimeTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ${self:service}-${self:provider.stage}-waiting-times
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: clinicId
+          AttributeType: S
+        - AttributeName: dateTime
+          AttributeType: S
+      KeySchema:
+        - AttributeName: clinicId
+          KeyType: HASH
+        - AttributeName: dateTime
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-waiting-times
+
+  # S3 Buckets
+  FileStorageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: ${self:service}-${self:provider.stage}-files-${aws:accountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldFiles
+            Status: Enabled
+            ExpirationInDays: 365
+            NoncurrentVersionExpirationInDays: 30
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-files
+
+Outputs:
+  CacheEndpoint:
+    Description: ElastiCache Serverless Endpoint
+    Value: !GetAtt CacheServerless.Endpoint.Address
+    Export:
+      Name: ${self:service}-${self:provider.stage}-cache-endpoint
+
+  BookingProcessingQueueUrl:
+    Description: Booking Processing Queue URL
+    Value: !Ref BookingProcessingQueue
+    Export:
+      Name: ${self:service}-${self:provider.stage}-booking-queue-url
+
+  BookingProcessingQueueArn:
+    Description: Booking Processing Queue ARN
+    Value: !GetAtt BookingProcessingQueue.Arn
+    Export:
+      Name: ${self:service}-${self:provider.stage}-booking-queue-arn
+
+  PaymentProcessingQueueUrl:
+    Description: Payment Processing Queue URL
+    Value: !Ref PaymentProcessingQueue
+    Export:
+      Name: ${self:service}-${self:provider.stage}-payment-queue-url
+
+  PaymentProcessingQueueArn:
+    Description: Payment Processing Queue ARN
+    Value: !GetAtt PaymentProcessingQueue.Arn
+    Export:
+      Name: ${self:service}-${self:provider.stage}-payment-queue-arn
+
+  FileStorageBucketName:
+    Description: File Storage Bucket Name
+    Value: !Ref FileStorageBucket
+    Export:
+      Name: ${self:service}-${self:provider.stage}-file-bucket
+
+  RateLimitTableName:
+    Description: Rate Limit Table Name
+    Value: !Ref RateLimitTable
+    Export:
+      Name: ${self:service}-${self:provider.stage}-rate-limit-table
+
+  SessionTableName:
+    Description: Session Table Name
+    Value: !Ref SessionTable
+    Export:
+      Name: ${self:service}-${self:provider.stage}-session-table
+
+  WaitingTimeTableName:
+    Description: Waiting Time Table Name
+    Value: !Ref WaitingTimeTable
+    Export:
+      Name: ${self:service}-${self:provider.stage}-waiting-time-table

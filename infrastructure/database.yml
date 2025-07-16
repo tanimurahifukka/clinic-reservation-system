@@ -1,0 +1,150 @@
+Resources:
+  # Aurora Serverless v2 Cluster
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Aurora Serverless cluster
+      SubnetIds:
+        - ${cf:${self:service}-${self:provider.stage}-vpc.PrivateSubnet1}
+        - ${cf:${self:service}-${self:provider.stage}-vpc.PrivateSubnet2}
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-db-subnet-group
+
+  # Database Credentials Secret
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: ${self:service}/${self:provider.stage}/database
+      Description: Database credentials for Aurora Serverless cluster
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "postgres"}'
+        GenerateStringKey: 'password'
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\'
+
+  # Aurora Serverless v2 Cluster
+  DBCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      DBClusterIdentifier: ${self:service}-${self:provider.stage}-cluster
+      Engine: aurora-postgresql
+      EngineVersion: '15.4'
+      EngineMode: provisioned
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0.5
+        MaxCapacity: 16
+      DatabaseName: clinic_reservation
+      MasterUsername: !Sub '{{resolve:secretsmanager:${DBSecret}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DBSecret}:SecretString:password}}'
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - ${cf:${self:service}-${self:provider.stage}-vpc.DatabaseSecurityGroup}
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: "03:00-04:00"
+      PreferredMaintenanceWindow: "sun:04:00-sun:05:00"
+      EnableCloudwatchLogsExports:
+        - postgresql
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-cluster
+
+  # Aurora Serverless v2 Instance
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: ${self:service}-${self:provider.stage}-instance
+      DBClusterIdentifier: !Ref DBCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+      PubliclyAccessible: false
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-instance
+
+  # DynamoDB Tables for high-frequency data
+  BookingCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ${self:service}-${self:provider.stage}-booking-cache
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-booking-cache
+
+  NotificationTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ${self:service}-${self:provider.stage}-notifications
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: ttl
+          AttributeType: N
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Name
+          Value: ${self:service}-${self:provider.stage}-notifications
+
+Outputs:
+  DBClusterArn:
+    Description: Aurora Serverless Cluster ARN
+    Value: !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${DBCluster}'
+    Export:
+      Name: ${self:service}-${self:provider.stage}-db-cluster-arn
+
+  DBSecretArn:
+    Description: Database Secret ARN
+    Value: !Ref DBSecret
+    Export:
+      Name: ${self:service}-${self:provider.stage}-db-secret-arn
+
+  BookingCacheTableName:
+    Description: Booking Cache DynamoDB Table Name
+    Value: !Ref BookingCacheTable
+    Export:
+      Name: ${self:service}-${self:provider.stage}-booking-cache-table
+
+  NotificationTableName:
+    Description: Notification DynamoDB Table Name
+    Value: !Ref NotificationTable
+    Export:
+      Name: ${self:service}-${self:provider.stage}-notification-table

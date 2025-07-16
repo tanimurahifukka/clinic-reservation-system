@@ -1,0 +1,256 @@
+service: clinic-reservation-system
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${opt:region, 'ap-northeast-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 30
+  
+  # API Gateway settings
+  apiGateway:
+    # Rate limiting
+    throttle:
+      burstLimit: 100
+      rateLimit: 50
+    # Usage plan for API key management
+    usagePlan:
+      - free:
+          quota:
+            limit: 1000
+            period: DAY
+          throttle:
+            burstLimit: 20
+            rateLimit: 10
+      - premium:
+          quota:
+            limit: 10000
+            period: DAY
+          throttle:
+            burstLimit: 100
+            rateLimit: 50
+  
+  # IAM Role Statements
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - rds-data:*
+          Resource: '*'
+        - Effect: Allow
+          Action:
+            - ssm:GetParameter
+            - ssm:GetParameters
+            - ssm:GetParametersByPath
+          Resource: 
+            - arn:aws:ssm:${aws:region}:${aws:accountId}:parameter/${self:service}/${self:provider.stage}/*
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:${self:service}/${self:provider.stage}/*
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource: '*'
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:service}-${self:provider.stage}-*
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+          Resource:
+            - arn:aws:s3:::${self:service}-${self:provider.stage}-files-*/*
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource:
+            - arn:aws:sqs:${aws:region}:${aws:accountId}:${self:service}-${self:provider.stage}-*
+        - Effect: Allow
+          Action:
+            - ses:SendEmail
+            - ses:SendRawEmail
+          Resource: '*'
+        - Effect: Allow
+          Action:
+            - sns:Publish
+          Resource: '*'
+
+  # Environment Variables
+  environment:
+    STAGE: ${self:provider.stage}
+    REGION: ${self:provider.region}
+    SERVICE_NAME: ${self:service}
+    DB_CLUSTER_ARN: ${cf:${self:service}-${self:provider.stage}-db.DBClusterArn}
+    DB_SECRET_ARN: ${cf:${self:service}-${self:provider.stage}-db.DBSecretArn}
+    DB_NAME: clinic_reservation
+    CACHE_ENDPOINT: ${cf:${self:service}-${self:provider.stage}-cache-queues.CacheEndpoint, ''}
+    BOOKING_CACHE_TABLE: ${cf:${self:service}-${self:provider.stage}-db.BookingCacheTableName}
+    NOTIFICATION_TABLE: ${cf:${self:service}-${self:provider.stage}-db.NotificationTableName}
+    RATE_LIMIT_TABLE_NAME: ${cf:${self:service}-${self:provider.stage}-cache-queues.RateLimitTableName}
+    SESSION_TABLE_NAME: ${cf:${self:service}-${self:provider.stage}-cache-queues.SessionTableName}
+    WAITING_TIME_TABLE_NAME: ${cf:${self:service}-${self:provider.stage}-cache-queues.WaitingTimeTableName}
+    FILE_BUCKET_NAME: ${cf:${self:service}-${self:provider.stage}-cache-queues.FileStorageBucketName}
+    BOOKING_QUEUE_URL: ${cf:${self:service}-${self:provider.stage}-cache-queues.BookingProcessingQueueUrl}
+    PAYMENT_QUEUE_URL: ${cf:${self:service}-${self:provider.stage}-cache-queues.PaymentProcessingQueueUrl}
+    USER_POOL_ID: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolId}
+    USER_POOL_CLIENT_ID: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolClientId}
+    
+  # VPC Configuration (for Aurora Serverless v2)
+  vpc:
+    securityGroupIds:
+      - ${cf:${self:service}-${self:provider.stage}-vpc.DatabaseSecurityGroup}
+    subnetIds:
+      - ${cf:${self:service}-${self:provider.stage}-vpc.PrivateSubnet1}
+      - ${cf:${self:service}-${self:provider.stage}-vpc.PrivateSubnet2}
+
+# Custom Variables
+custom:
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules: true
+  serverless-offline:
+    httpPort: 3000
+    lambdaPort: 3002
+
+# Plugins
+plugins:
+  - serverless-webpack
+  - serverless-offline
+
+# Functions - Import from feature-specific configurations
+functions:
+  # Authorizer Function
+  cognitoAuthorizer:
+    handler: src/handlers/auth/authorizer.handler
+    environment:
+      USER_POOL_ID: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolId}
+      CLIENT_ID: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolClientId}
+
+  # Health Check Function
+  healthCheck:
+    handler: src/handlers/health/index.handler
+    events:
+      - http:
+          path: /health
+          method: get
+          cors: true
+    environment:
+      LOG_LEVEL: info
+
+  # Booking Functions
+  createBooking:
+    handler: src/handlers/booking/create.handler
+    events:
+      - http:
+          path: /bookings
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolArn}
+
+  getBookings:
+    handler: src/handlers/booking/list.handler
+    events:
+      - http:
+          path: /bookings
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolArn}
+
+  updateBooking:
+    handler: src/handlers/booking/update.handler
+    events:
+      - http:
+          path: /bookings/{id}
+          method: put
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolArn}
+
+  cancelBooking:
+    handler: src/handlers/booking/cancel.handler
+    events:
+      - http:
+          path: /bookings/{id}/cancel
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolArn}
+
+  # Notification Functions
+  processNotification:
+    handler: src/handlers/notification/process.handler
+    events:
+      - sqs:
+          arn: ${cf:${self:service}-${self:provider.stage}-parameters.NotificationQueueArn}
+          batchSize: 10
+
+  sendEmail:
+    handler: src/handlers/notification/email.handler
+    events:
+      - sqs:
+          arn: ${cf:${self:service}-${self:provider.stage}-parameters.NotificationQueueArn}
+          batchSize: 5
+
+  sendSms:
+    handler: src/handlers/notification/sms.handler
+    events:
+      - sqs:
+          arn: ${cf:${self:service}-${self:provider.stage}-parameters.NotificationQueueArn}
+          batchSize: 5
+
+  sendLineMessage:
+    handler: src/handlers/notification/line.handler
+    events:
+      - sqs:
+          arn: ${cf:${self:service}-${self:provider.stage}-parameters.NotificationQueueArn}
+          batchSize: 5
+
+# CloudFormation Resources
+resources:
+  # Import nested stacks
+  - ${file(infrastructure/vpc.yml)}
+  - ${file(infrastructure/database.yml)}
+  - ${file(infrastructure/auth.yml)}
+  - ${file(infrastructure/monitoring.yml)}
+  - ${file(infrastructure/parameters.yml)}
+  - ${file(infrastructure/cache-queues.yml)}
+
+# Package configuration
+package:
+  individually: true
+  exclude:
+    - .git/**
+    - .gitignore
+    - README.md
+    - infrastructure/**
+    - tests/**
+    - '*.md'

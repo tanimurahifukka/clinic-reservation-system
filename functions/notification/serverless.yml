@@ -1,0 +1,38 @@
+service: clinic-reservation-notification
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${opt:region, 'ap-northeast-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 30
+
+functions:
+  processNotification:
+    handler: src/handlers/notification/process.handler
+    events:
+      - sqs:
+          arn: ${cf:clinic-reservation-system-${self:provider.stage}-parameters.NotificationQueueArn}
+          batchSize: 10
+
+  sendEmail:
+    handler: src/handlers/notification/email.handler
+    events:
+      - sqs:
+          arn: ${cf:clinic-reservation-system-${self:provider.stage}-parameters.NotificationQueueArn}
+          batchSize: 5
+
+  sendSms:
+    handler: src/handlers/notification/sms.handler
+    events:
+      - sqs:
+          arn: ${cf:clinic-reservation-system-${self:provider.stage}-parameters.NotificationQueueArn}
+          batchSize: 5
+
+  sendLineMessage:
+    handler: src/handlers/notification/line.handler
+    events:
+      - sqs:
+          arn: ${cf:clinic-reservation-system-${self:provider.stage}-parameters.NotificationQueueArn}
+          batchSize: 5

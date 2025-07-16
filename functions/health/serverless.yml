@@ -1,0 +1,18 @@
+service: clinic-reservation-health
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${opt:region, 'ap-northeast-1'}
+  stage: ${opt:stage, 'dev'}
+
+functions:
+  healthCheck:
+    handler: src/handlers/health/index.handler
+    events:
+      - http:
+          path: /health
+          method: get
+          cors: true
+    environment:
+      LOG_LEVEL: info

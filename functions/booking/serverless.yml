@@ -1,0 +1,58 @@
+service: clinic-reservation-booking
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${opt:region, 'ap-northeast-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 30
+
+functions:
+  createBooking:
+    handler: src/handlers/booking/create.handler
+    events:
+      - http:
+          path: /bookings
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:clinic-reservation-system-${self:provider.stage}-auth.UserPoolArn}
+
+  getBookings:
+    handler: src/handlers/booking/list.handler
+    events:
+      - http:
+          path: /bookings
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:clinic-reservation-system-${self:provider.stage}-auth.UserPoolArn}
+
+  updateBooking:
+    handler: src/handlers/booking/update.handler
+    events:
+      - http:
+          path: /bookings/{id}
+          method: put
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:clinic-reservation-system-${self:provider.stage}-auth.UserPoolArn}
+
+  cancelBooking:
+    handler: src/handlers/booking/cancel.handler
+    events:
+      - http:
+          path: /bookings/{id}/cancel
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:clinic-reservation-system-${self:provider.stage}-auth.UserPoolArn}

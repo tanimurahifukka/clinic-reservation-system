@@ -1,0 +1,227 @@
+Resources:
+  # Systems Manager Parameters
+  DatabaseUrlParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/database/url
+      Type: String
+      Value: !Sub 
+        - 'postgresql://${Username}:${Password}@${Endpoint}:5432/clinic_reservation'
+        - Username: !Sub '{{resolve:secretsmanager:${self:service}/${self:provider.stage}/database:SecretString:username}}'
+          Password: !Sub '{{resolve:secretsmanager:${self:service}/${self:provider.stage}/database:SecretString:password}}'
+          Endpoint: ${cf:${self:service}-${self:provider.stage}-db.DBClusterEndpoint}
+      Description: Database connection URL
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  JwtSecretParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/auth/jwt-secret
+      Type: SecureString
+      Value: !Sub '{{resolve:secretsmanager:${self:service}/${self:provider.stage}/jwt:SecretString:secret}}'
+      Description: JWT signing secret
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  LineChannelSecretParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/line/channel-secret
+      Type: SecureString
+      Value: 'PLACEHOLDER_LINE_CHANNEL_SECRET'
+      Description: LINE Bot channel secret
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  LineChannelTokenParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/line/channel-token
+      Type: SecureString
+      Value: 'PLACEHOLDER_LINE_CHANNEL_TOKEN'
+      Description: LINE Bot channel access token
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  EmailFromParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/email/from-address
+      Type: String
+      Value: 'noreply@clinic-reservation.example.com'
+      Description: Email from address for notifications
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  SmsFromParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/sms/from-number
+      Type: String
+      Value: '+81-XX-XXXX-XXXX'
+      Description: SMS from number for notifications
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  StripePublicKeyParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/stripe/public-key
+      Type: String
+      Value: 'PLACEHOLDER_STRIPE_PUBLIC_KEY'
+      Description: Stripe publishable API key
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  StripeSecretKeyParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/stripe/secret-key
+      Type: SecureString
+      Value: 'PLACEHOLDER_STRIPE_SECRET_KEY'
+      Description: Stripe secret API key
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  StripeWebhookSecretParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/stripe/webhook-secret
+      Type: SecureString
+      Value: 'PLACEHOLDER_STRIPE_WEBHOOK_SECRET'
+      Description: Stripe webhook endpoint secret
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  AgoraAppIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/agora/app-id
+      Type: String
+      Value: 'PLACEHOLDER_AGORA_APP_ID'
+      Description: Agora App ID for video calls
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  AgoraAppCertificateParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /${self:service}/${self:provider.stage}/agora/app-certificate
+      Type: SecureString
+      Value: 'PLACEHOLDER_AGORA_APP_CERTIFICATE'
+      Description: Agora App Certificate for video calls
+      Tags:
+        Environment: ${self:provider.stage}
+        Service: ${self:service}
+
+  # Secrets Manager Secrets
+  JwtSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: ${self:service}/${self:provider.stage}/jwt
+      Description: JWT signing secret
+      GenerateSecretString:
+        SecretStringTemplate: '{}'
+        GenerateStringKey: 'secret'
+        PasswordLength: 64
+        ExcludeCharacters: '"@/\'
+
+  EncryptionSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: ${self:service}/${self:provider.stage}/encryption
+      Description: Data encryption secret
+      GenerateSecretString:
+        SecretStringTemplate: '{}'
+        GenerateStringKey: 'key'
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\'
+
+  # SQS Queues for async processing
+  NotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:service}-${self:provider.stage}-notifications
+      VisibilityTimeoutSeconds: 300
+      MessageRetentionPeriod: 1209600  # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt NotificationDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Service
+          Value: ${self:service}
+
+  NotificationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:service}-${self:provider.stage}-notifications-dlq
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Service
+          Value: ${self:service}
+
+  BookingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:service}-${self:provider.stage}-bookings
+      VisibilityTimeoutSeconds: 300
+      MessageRetentionPeriod: 1209600  # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt BookingDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Service
+          Value: ${self:service}
+
+  BookingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:service}-${self:provider.stage}-bookings-dlq
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Service
+          Value: ${self:service}
+
+Outputs:
+  NotificationQueueUrl:
+    Description: Notification Queue URL
+    Value: !Ref NotificationQueue
+    Export:
+      Name: ${self:service}-${self:provider.stage}-notification-queue-url
+
+  NotificationQueueArn:
+    Description: Notification Queue ARN
+    Value: !GetAtt NotificationQueue.Arn
+    Export:
+      Name: ${self:service}-${self:provider.stage}-notification-queue-arn
+
+  BookingQueueUrl:
+    Description: Booking Queue URL
+    Value: !Ref BookingQueue
+    Export:
+      Name: ${self:service}-${self:provider.stage}-booking-queue-url
+
+  BookingQueueArn:
+    Description: Booking Queue ARN
+    Value: !GetAtt BookingQueue.Arn
+    Export:
+      Name: ${self:service}-${self:provider.stage}-booking-queue-arn
