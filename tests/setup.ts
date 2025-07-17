@@ -40,7 +40,7 @@ jest.mock('aws-sdk', () => ({
 }));
 
 // Global test utilities
-global.mockAPIGatewayEvent = (overrides = {}) => ({
+(global as any).mockAPIGatewayEvent = (overrides = {}) => ({
   httpMethod: 'GET',
   path: '/test',
   pathParameters: null,
@@ -66,7 +66,7 @@ global.mockAPIGatewayEvent = (overrides = {}) => ({
   ...overrides
 });
 
-global.mockContext = () => ({
+(global as any).mockContext = () => ({
   callbackWaitsForEmptyEventLoop: false,
   functionName: 'test-function',
   functionVersion: '$LATEST',
