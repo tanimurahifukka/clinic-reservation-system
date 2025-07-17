@@ -1,6 +1,6 @@
-# Clinic Reservation System
+# 🏥 Clinic Reservation System
 
-A serverless clinic reservation system built with AWS Lambda, Aurora Serverless, and TypeScript.
+A comprehensive serverless clinic reservation system built with AWS Lambda, Aurora Serverless, and TypeScript. Features multi-language support (Japanese, English, Chinese, Korean), integrated payment processing with Stripe, real-time notifications via email/SMS/LINE, and video consultation capabilities.
 
 ## Architecture
 
@@ -11,31 +11,61 @@ A serverless clinic reservation system built with AWS Lambda, Aurora Serverless,
 - **Monitoring**: CloudWatch + X-Ray
 - **Infrastructure**: Serverless Framework
 
-## Features
+## 🚀 Features
 
-- Patient booking management
-- Doctor schedule management
-- Multi-channel booking (Web, LINE, Mobile)
-- Online consultation support
-- Automated notifications (Email, SMS, LINE)
-- Family booking management
-- Continuous treatment booking
-- Medical questionnaires
-- Reporting and analytics
+### Core Features
+- **Patient Booking Management** - Create, update, cancel appointments
+- **Doctor Schedule Management** - Flexible scheduling with availability management
+- **Multi-language Support** - Japanese, English, Chinese, Korean
+- **Payment Processing** - Integrated Stripe payments with refund support
+- **Insurance Support** - Patient insurance information and coverage calculation
 
-## Prerequisites
+### Communication
+- **Multi-channel Notifications** - Email (AWS SES), SMS (AWS SNS), LINE Bot
+- **Automated Reminders** - Configurable appointment reminders
+- **Real-time Updates** - Instant booking confirmations and changes
 
-- Node.js 18.x or later
-- AWS CLI configured
-- Serverless Framework CLI
-- PostgreSQL (for local development)
+### Advanced Features
+- **Video Consultations** - Agora-powered online consultations
+- **QR Code Integration** - Quick check-in and medical record access
+- **Family Booking Management** - Manage appointments for family members
+- **Medical Questionnaires** - Digital intake forms
+- **Waiting Time Management** - Real-time clinic waiting estimates
+- **Doctor Ratings & Reviews** - Patient feedback system
 
-## Installation
+### Technical Features
+- **Serverless Architecture** - Auto-scaling and cost-efficient
+- **High Performance** - Redis caching, optimized queries
+- **Security** - JWT authentication, role-based access control
+- **GDPR Compliant** - Data privacy and patient rights
+- **Comprehensive Monitoring** - CloudWatch dashboards and alerts
 
-1. Clone the repository
-2. Install dependencies:
+## 📋 Prerequisites
+
+- **Node.js** 18.x or later
+- **AWS CLI** configured with appropriate permissions
+- **Serverless Framework** CLI (`npm install -g serverless`)
+- **Docker** (for local development)
+- **PostgreSQL** client tools
+- **Make** (optional, for using Makefile commands)
+
+## 🛠️ Installation
+
+1. **Clone the repository:**
    ```bash
-   npm run setup
+   git clone https://github.com/tanimurahifukka/clinic-reservation-system.git
+   cd clinic-reservation-system
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment:**
+   ```bash
+   cp .env.example .env.dev
+   # Edit .env.dev with your configuration
    ```
 
 ## Configuration
@@ -68,16 +98,25 @@ Ensure your AWS credentials are configured:
 aws configure
 ```
 
-## Development
+## 💻 Development
 
-### Local Development
+### Quick Start
 
-1. Start the local development server:
-   ```bash
-   npm run dev
-   ```
+```bash
+# Start local environment (Docker required)
+make local-up
 
-2. The API will be available at `http://localhost:3000`
+# Run database migrations
+make migrate STAGE=dev
+
+# Seed test data
+make local-seed
+
+# Start development server
+npm run dev
+```
+
+The API will be available at `http://localhost:3000`
 
 ### Database Setup
 
@@ -115,33 +154,71 @@ Fix linting issues:
 npm run lint:fix
 ```
 
-## Deployment
+## 🚀 Deployment
 
-### Development Environment
-
-```bash
-npm run deploy:dev
-```
-
-### Production Environment
+### Quick Deploy
 
 ```bash
-npm run deploy:prod
+# Deploy to development
+make deploy STAGE=dev
+
+# Deploy to staging
+make deploy STAGE=staging
+
+# Deploy to production
+make deploy STAGE=prod PROFILE=prod
 ```
 
-## API Endpoints
+### Full Infrastructure Setup
 
-### Health Check
-- `GET /health` - System health status
+1. **Deploy infrastructure:**
+   ```bash
+   make deploy-infra STAGE=dev
+   ```
+
+2. **Run migrations:**
+   ```bash
+   make migrate STAGE=dev
+   ```
+
+3. **Deploy application:**
+   ```bash
+   make deploy STAGE=dev
+   ```
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
+
+## 📚 API Documentation
+
+### Health & Status
+- `GET /health` - System health status with dependency checks
+
+### Authentication
+- `POST /patients/register` - Patient registration
+- `POST /auth/login` - User login (via Cognito)
+- `POST /auth/refresh` - Refresh access token
 
 ### Booking Management
 - `POST /bookings` - Create a new booking
-- `GET /bookings` - List bookings with filters
+- `GET /bookings` - List bookings with pagination
+- `GET /bookings/{id}` - Get booking details
 - `PUT /bookings/{id}` - Update booking
-- `DELETE /bookings/{id}` - Cancel booking
+- `POST /bookings/{id}/cancel` - Cancel booking
 
-### Authentication
-All booking endpoints require authentication via AWS Cognito.
+### Doctor Management
+- `GET /doctors/{doctorId}/availability` - Get doctor availability
+- `GET /doctors/search-available` - Search available doctors
+
+### Patient Management
+- `GET /patients/profile` - Get patient profile
+- `GET /patients/{patientId}/profile` - Get specific patient profile (staff only)
+- `PUT /patients/profile` - Update patient profile
+
+### Payment
+- `POST /payments/create-intent` - Create payment intent
+- `POST /payments/webhook` - Stripe webhook endpoint
+
+All endpoints except health check and webhooks require JWT authentication.
 
 ## Infrastructure
 
@@ -195,6 +272,65 @@ The system includes the following main entities:
 4. Run tests and linting
 5. Submit a pull request
 
-## License
+## 🔧 Scripts
 
-MIT License - see LICENSE file for details.
+```bash
+# Development
+npm run dev              # Start local server
+npm run build           # Build TypeScript
+npm run test            # Run tests
+npm run lint            # Run linter
+npm run typecheck       # Type checking
+
+# Deployment
+npm run deploy:dev      # Deploy to dev
+npm run deploy:staging  # Deploy to staging
+npm run deploy:prod     # Deploy to production
+
+# Database
+npm run migrate         # Run migrations
+npm run seed            # Seed test data
+
+# Local Development
+npm run docker:up       # Start Docker containers
+npm run docker:down     # Stop Docker containers
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Lambda Timeout**: Increase memory allocation or check VPC configuration
+2. **Database Connection**: Verify security groups and credentials
+3. **Authentication Errors**: Check Cognito configuration and JWT tokens
+
+### Debug Mode
+
+```bash
+# Enable debug logging
+export LOG_LEVEL=debug
+npm run dev
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- AWS for serverless infrastructure
+- Stripe for payment processing
+- LINE for messaging integration
+- Agora for video consultation support
+
+---
+
+**Built with ❤️ by the Clinic Reservation Team**

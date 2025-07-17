@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cognito User Pool for Clinic Reservation System'
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment stage
+
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub 'clinic-reservation-${Stage}'
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+        - Name: name
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: phone_number
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: user_id
+          AttributeDataType: String
+          Mutable: false
+          DeveloperOnlyAttribute: false
+        - Name: user_type
+          AttributeDataType: String
+          Mutable: false
+          DeveloperOnlyAttribute: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+      MfaConfiguration: 'OPTIONAL'
+      EnabledMfas:
+        - SMS_MFA
+        - SOFTWARE_TOKEN_MFA
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+          - Name: verified_phone_number
+            Priority: 2
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
+      UserPoolTags:
+        Service: clinic-reservation
+        Stage: !Ref Stage
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub 'clinic-reservation-client-${Stage}'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      RefreshTokenValidity: 30
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      PreventUserExistenceErrors: ENABLED
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+        - phone
+      AllowedOAuthFlowsUserPoolClient: true
+      CallbackURLs:
+        - !Sub 'https://app-${Stage}.clinic-reservation.com/callback'
+        - 'http://localhost:3000/callback'
+      LogoutURLs:
+        - !Sub 'https://app-${Stage}.clinic-reservation.com/logout'
+        - 'http://localhost:3000/logout'
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub 'clinic-reservation-${Stage}-${AWS::AccountId}'
+      UserPoolId: !Ref UserPool
+
+  # Groups for role-based access
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: admin
+      UserPoolId: !Ref UserPool
+      Description: 'System administrators'
+      Precedence: 1
+
+  StaffGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: staff
+      UserPoolId: !Ref UserPool
+      Description: 'Clinic staff members'
+      Precedence: 2
+
+  DoctorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: doctor
+      UserPoolId: !Ref UserPool
+      Description: 'Doctors'
+      Precedence: 3
+
+  PatientGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: patient
+      UserPoolId: !Ref UserPool
+      Description: 'Patients'
+      Precedence: 4
+
+  # Lambda trigger for custom authentication flows
+  PreSignUpLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'clinic-reservation-presignup-${Stage}'
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            // Auto-confirm email if it's a known domain (for testing)
+            const email = event.request.userAttributes.email;
+            if (email && email.endsWith('@clinic.local')) {
+              event.response.autoConfirmUser = true;
+              event.response.autoVerifyEmail = true;
+            }
+            return event;
+          };
+      Role: !GetAtt LambdaTriggerRole.Arn
+
+  LambdaTriggerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  UserPoolLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PreSignUpLambda
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
+
+  UserPoolPreSignUpTrigger:
+    Type: AWS::Cognito::UserPoolLambdaConfig
+    DependsOn: UserPoolLambdaInvokePermission
+    Properties:
+      UserPoolId: !Ref UserPool
+      LambdaConfig:
+        PreSignUp: !GetAtt PreSignUpLambda.Arn
+
+Outputs:
+  UserPoolId:
+    Description: 'User Pool ID'
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolId'
+
+  UserPoolArn:
+    Description: 'User Pool ARN'
+    Value: !GetAtt UserPool.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolArn'
+
+  UserPoolClientId:
+    Description: 'User Pool Client ID'
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolClientId'
+
+  UserPoolDomainName:
+    Description: 'User Pool Domain Name'
+    Value: !Ref UserPoolDomain
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolDomain'
