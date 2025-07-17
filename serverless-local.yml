@@ -1,0 +1,35 @@
+# Local development overrides for serverless.yml
+custom:
+  serverless-offline:
+    httpPort: 3000
+    lambdaPort: 3002
+    noPrependStageInUrl: true
+    useChildProcesses: true
+    
+provider:
+  environment:
+    # Override with local values
+    DB_HOST: ${env:DB_HOST, 'localhost'}
+    DB_PORT: ${env:DB_PORT, '5432'}
+    DB_NAME: ${env:DB_NAME, 'clinic_reservation'}
+    DB_USER: ${env:DB_USER, 'postgres'}
+    DB_PASSWORD: ${env:DB_PASSWORD, 'postgres'}
+    
+    # Local DynamoDB
+    DYNAMODB_ENDPOINT: ${env:DYNAMODB_ENDPOINT, 'http://localhost:8000'}
+    IS_OFFLINE: true
+    
+    # Local Redis
+    REDIS_HOST: ${env:REDIS_HOST, 'localhost'}
+    REDIS_PORT: ${env:REDIS_PORT, '6379'}
+    
+    # Local S3 (MinIO)
+    S3_ENDPOINT: ${env:S3_ENDPOINT, 'http://localhost:9000'}
+    
+    # Override table names for local
+    BOOKING_CACHE_TABLE: clinic-reservation-system-dev-booking-cache
+    NOTIFICATION_TABLE: clinic-reservation-system-dev-notifications
+    RATE_LIMIT_TABLE_NAME: clinic-reservation-system-dev-rate-limits
+    SESSION_TABLE_NAME: clinic-reservation-system-dev-sessions
+    WAITING_TIME_TABLE_NAME: clinic-reservation-system-dev-waiting-times
+    FILE_BUCKET_NAME: clinic-reservation-system-dev-files

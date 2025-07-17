@@ -28,3 +28,6 @@ export const createErrorResponse = (
     ...(details && { details })
   });
 };
+
+// Alias for backward compatibility
+export const errorResponse = createErrorResponse;

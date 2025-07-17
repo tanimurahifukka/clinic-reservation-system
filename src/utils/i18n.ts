@@ -1,5 +1,4 @@
 import i18next from 'i18next';
-import Backend from 'i18next-node-fs-backend';
 import { logger } from './logger';
 
 // Language configuration
@@ -7,29 +6,62 @@ const SUPPORTED_LANGUAGES = ['ja', 'en', 'zh', 'ko'];
 const DEFAULT_LANGUAGE = 'ja';
 
 // Initialize i18next
+// Load translation files manually for serverless environment
+const loadTranslations = () => {
+  const translations: Record<string, any> = {};
+  
+  // Import translation files
+  try {
+    // Japanese
+    translations.ja = {
+      common: require('../locales/ja/common.json'),
+      booking: require('../locales/ja/booking.json'),
+    };
+    
+    // English
+    translations.en = {
+      common: require('../locales/en/common.json'),
+      booking: require('../locales/en/booking.json'),
+    };
+    
+    // Add Chinese and Korean when ready
+    // translations.zh = { ... };
+    // translations.ko = { ... };
+  } catch (error) {
+    logger.error('Failed to load translation files', { error });
+  }
+  
+  return translations;
+};
+
 export const initI18n = async (): Promise<void> => {
   try {
-    await i18next
-      .use(Backend)
-      .init({
-        backend: {
-          loadPath: __dirname + '/../locales/{{lng}}/{{ns}}.json',
-        },
-        fallbackLng: DEFAULT_LANGUAGE,
-        supportedLngs: SUPPORTED_LANGUAGES,
-        ns: ['common', 'booking', 'notification', 'error'],
-        defaultNS: 'common',
-        interpolation: {
-          escapeValue: false,
-        },
-        debug: process.env.STAGE === 'dev',
-      });
+    const resources = loadTranslations();
+    
+    await i18next.init({
+      resources,
+      fallbackLng: DEFAULT_LANGUAGE,
+      supportedLngs: SUPPORTED_LANGUAGES,
+      ns: ['common', 'booking', 'notification', 'error'],
+      defaultNS: 'common',
+      interpolation: {
+        escapeValue: false,
+      },
+      debug: process.env.STAGE === 'dev',
+    });
     
     logger.info('i18n initialized successfully');
   } catch (error) {
     logger.error('Failed to initialize i18n', { error });
     throw error;
   }
+};
+
+// Get translation with parameters support
+export const getTranslation = (key: string, language: string = DEFAULT_LANGUAGE, params?: Record<string, any>): string => {
+  const t = getTranslator(language);
+  const translation = t(key, params);
+  return typeof translation === 'string' ? translation : String(translation);
 };
 
 // Get translation function for a specific language
@@ -45,7 +77,9 @@ export const translate = (
   options?: any
 ): string => {
   const t = getTranslator(language);
-  return t(key, options);
+  const result = t(key, options);
+  // Ensure we always return a string
+  return typeof result === 'string' ? result : String(result);
 };
 
 // Get user's preferred language from event

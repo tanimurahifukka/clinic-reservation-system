@@ -20,14 +20,24 @@ class DatabaseConnection {
     }
 
     try {
-      // For Aurora Serverless, we use RDS Data API or connection pooling
+      // Check if running in Lambda environment
+      const isLambda = !!process.env.LAMBDA_TASK_ROOT;
+      const isOffline = process.env.IS_OFFLINE === 'true';
+
+      // Use Aurora Data API in Lambda, PostgreSQL for local
+      if (isLambda && !isOffline) {
+        // In Lambda, we'll use the Aurora client instead
+        throw new Error('Use aurora-client for Lambda environment');
+      }
+
+      // For local development, use standard PostgreSQL connection
       const connectionConfig = {
-        host: process.env.DB_HOST,
+        host: process.env.DB_HOST || 'localhost',
         port: parseInt(process.env.DB_PORT || '5432'),
         database: process.env.DB_NAME || 'clinic_reservation',
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || 'postgres',
+        ssl: process.env.NODE_ENV === 'production' && !isOffline ? { rejectUnauthorized: false } : false,
         max: 5, // Maximum number of connections in the pool
         idleTimeoutMillis: 30000, // Close idle connections after 30 seconds
         connectionTimeoutMillis: 10000, // Return error after 10 seconds if connection could not be established

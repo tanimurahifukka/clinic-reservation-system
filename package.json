@@ -22,7 +22,16 @@
     "migrate:prod": "NODE_ENV=production node database/migrate.js",
     "setup": "npm install && npm run build",
     "dev": "serverless offline --stage dev",
-    "validate": "npm run lint && npm run test && npm run build"
+    "validate": "npm run lint && npm run test && npm run build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "setup:local": "node scripts/setup-local.js",
+    "start:local": "npm run docker:up && sleep 5 && npm run setup:local && npm run dev",
+    "typecheck": "tsc --noEmit",
+    "seed": "node scripts/seed-data.js",
+    "clean:local": "node scripts/clean-local.js",
+    "test:api": "node scripts/test-api.js"
   },
   "dependencies": {
     "aws-lambda": "^1.0.7",

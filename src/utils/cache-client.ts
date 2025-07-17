@@ -6,18 +6,22 @@ export class CacheClient {
   private connected: boolean = false;
 
   constructor(endpoint?: string) {
-    const redisEndpoint = endpoint || process.env.CACHE_ENDPOINT;
+    const isOffline = process.env.IS_OFFLINE === 'true';
+    const redisHost = endpoint || process.env.REDIS_HOST || process.env.CACHE_ENDPOINT;
+    const redisPort = parseInt(process.env.REDIS_PORT || '6379');
     
-    if (!redisEndpoint) {
-      throw new Error('Redis endpoint not configured');
+    if (!redisHost) {
+      logger.warn('Redis endpoint not configured, cache will be disabled');
+      // Create a mock client that always returns null/false
+      this.client = new Proxy({} as any, {
+        get: () => () => Promise.resolve(null)
+      });
+      return;
     }
 
-    this.client = new Redis({
-      host: redisEndpoint,
-      port: 6379,
-      tls: {
-        rejectUnauthorized: false,
-      },
+    const redisConfig: any = {
+      host: redisHost,
+      port: redisPort,
       retryStrategy: (times: number) => {
         const delay = Math.min(times * 50, 2000);
         return delay;
@@ -29,7 +33,16 @@ export class CacheClient {
         }
         return false;
       },
-    });
+    };
+
+    // Only use TLS in production
+    if (!isOffline && process.env.NODE_ENV === 'production') {
+      redisConfig.tls = {
+        rejectUnauthorized: false,
+      };
+    }
+
+    this.client = new Redis(redisConfig);
 
     this.client.on('connect', () => {
       this.connected = true;
@@ -67,6 +80,10 @@ export class CacheClient {
       logger.error('Cache getJSON error', { key, error });
       return null;
     }
+  }
+
+  async setex(key: string, seconds: number, value: string): Promise<boolean> {
+    return this.set(key, value, seconds);
   }
 
   async set(key: string, value: string, ttl?: number): Promise<boolean> {
@@ -177,6 +194,19 @@ export class CacheClient {
       logger.error('Cache hset error', { key, field, error });
       return false;
     }
+  }
+
+  async del(key: string): Promise<boolean> {
+    if (this.client) {
+      try {
+        const result = await this.client.del(key);
+        return result > 0;
+      } catch (error) {
+        logger.error('Cache del error', { key, error });
+        return false;
+      }
+    }
+    return false;
   }
 
   async hdel(key: string, field: string): Promise<boolean> {
