@@ -205,6 +205,73 @@ functions:
             type: COGNITO_USER_POOLS
             arn: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolArn}
 
+  # Payment Functions
+  createPaymentIntent:
+    handler: src/handlers/payment/create-intent.handler
+    events:
+      - http:
+          path: /payments/create-intent
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolArn}
+
+  stripeWebhook:
+    handler: src/handlers/payment/webhook.handler
+    events:
+      - http:
+          path: /payments/webhook
+          method: post
+          cors: false
+
+  # Doctor Functions
+  getDoctorAvailability:
+    handler: src/handlers/doctors/get-availability.handler
+    events:
+      - http:
+          path: /doctors/{doctorId}/availability
+          method: get
+          cors: true
+
+  searchAvailableDoctors:
+    handler: src/handlers/doctors/search-available.handler
+    events:
+      - http:
+          path: /doctors/search-available
+          method: get
+          cors: true
+
+  # Patient Functions
+  registerPatient:
+    handler: src/handlers/patients/register.handler
+    events:
+      - http:
+          path: /patients/register
+          method: post
+          cors: true
+
+  getPatientProfile:
+    handler: src/handlers/patients/get-profile.handler
+    events:
+      - http:
+          path: /patients/profile
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolArn}
+      - http:
+          path: /patients/{patientId}/profile
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${cf:${self:service}-${self:provider.stage}-auth.UserPoolArn}
+
   # Notification Functions
   processNotification:
     handler: src/handlers/notification/process.handler
